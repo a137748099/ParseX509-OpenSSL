@@ -12,3 +12,6 @@ You can use it under `Windows` and `Linux`.
 The `test` project is used for source code debugging.
 The `x509lib` project is used to generate shared libraries.
 
+# License
+[LGPL](https://github.com/a137748099/ParseX509-OpenSSL/blob/main/LICENSE)
+
