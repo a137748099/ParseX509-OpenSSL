@@ -99,7 +99,7 @@ public:
                             const char *pass = "");
     static bool importP7b(const char *p7b, int len, vector<X509Certificate> &caCerts);
 
-    static vector<X509Certificate *> splitCertChain(const string &chains);//only pem
+    static vector<X509Certificate> splitCertChain(const string &chains);//only pem
 
     static int verify(const X509Certificate &userCert, vector<X509Certificate> certificateChain);
 

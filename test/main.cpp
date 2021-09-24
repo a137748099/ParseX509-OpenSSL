@@ -1,5 +1,6 @@
 ﻿#include <iostream>
 #include <fstream>
+#include <algorithm>
 #include "x509certificate.h"
 using namespace std;
 
@@ -100,5 +101,12 @@ int main()
 
     auto chainFileData = readBinaryFile("C:/Users/Songxd/Desktop/chain22.pem");
     auto certsVec = X509Certificate::splitCertChain(chainFileData);
+	//X509Certificate x509Cert("/home/song/Desktop/baidu.cer", 0);
+    //X509Certificate middleCert("/home/song/Desktop/gsorganizationvalsha2g2r1.pem", 0);
+    //X509Certificate rootCert("/home/song/Desktop/333.cer", 0);
+    //vector<X509Certificate> certChain = {x509Cert, middleCert, rootCert};
+    //std::reverse(certChain.begin(), certChain.end());
+    //auto verifyResult = X509Certificate::verify(x509Cert, certChain);
+    //cout << "verify" << verifyResult;
     return 0;
 }

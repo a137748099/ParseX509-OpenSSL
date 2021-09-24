@@ -197,7 +197,7 @@ bool X509Certificate::importP7b(const char *p7b, int len, vector<X509Certificate
     return true;
 }
 
-vector<X509Certificate *> X509Certificate::splitCertChain(const string &chains)
+vector<X509Certificate> X509Certificate::splitCertChain(const string &chains)
 {
     return X509Certificate_p::splitCertChain(chains);
 }

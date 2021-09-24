@@ -6,12 +6,18 @@
 #include <string.h>
 #include <memory>
 #include <time.h>
+#include <set>
+#include <iostream>
 #ifdef WIN32
 #include <windows.h>
 #include <wincrypt.h>
 #undef X509_NAME//conflict
 #include <cryptuiapi.h>
 #include <tchar.h>
+#endif
+
+#ifdef linux
+#include <dirent.h>
 #endif
 
 #ifdef  __cplusplus
@@ -736,9 +742,9 @@ bool X509Certificate_p::importP7b(const char *p7b, int len, vector<X509Certifica
     return true;
 }
 
-vector<X509Certificate *> X509Certificate_p::splitCertChain(const string &chains)
+vector<X509Certificate> X509Certificate_p::splitCertChain(const string &chains)
 {
-    vector<X509Certificate *> certsVec;
+    vector<X509Certificate> certsVec;
     string::size_type startPos = 0;
     string::size_type endPos = 0;
     string buff = chains;
@@ -748,7 +754,7 @@ vector<X509Certificate *> X509Certificate_p::splitCertChain(const string &chains
         string tmp = buff.substr(startPos, endPos);
         buff = endPos >= buff.size() ? "" : buff.substr(endPos, buff.size());
 
-        X509Certificate *cert = new X509Certificate(tmp.c_str(), tmp.size());
+        X509Certificate cert(tmp.c_str(), static_cast<int>(tmp.size()));
         certsVec.push_back(cert);
     }
 
@@ -767,19 +773,85 @@ int X509Certificate_p::verify(const X509Certificate &userCert, vector<X509Certif
     }
 
     ctx = X509_STORE_CTX_new();
+    if(!ctx) {
+        X509_STORE_free(store);
+        return -1;
+    }
+
     ret = X509_STORE_CTX_init(ctx, store, reinterpret_cast<X509 *>(userCert.handle()), NULL);
+    if (ret != 1) {
+//        ret = X509_STORE_CTX_get_error(ctx);
+//        printf("err %d", ret);
+        X509_STORE_free(store);
+        X509_STORE_CTX_free(ctx);
+        return -1;
+    }
 
     ret = X509_verify_cert(ctx);
-    if (ret != 1) {
-        ret = X509_STORE_CTX_get_error(ctx);
-//        printf("err %d", ret);
-    }
 
     X509_STORE_CTX_free(ctx);
     X509_STORE_free(store);
 
     return ret;
 }
+
+#ifdef linux
+static vector<string> GetFiles(const char *src_dir, const char *ext, const char *ext2)
+{
+    vector<string> result;
+    string directory(src_dir);
+    string m_ext(ext);
+    string m_ext2(ext2);
+    //printf("ext length:%d\n",m_ext.length());
+
+    // 打开目录, DIR是类似目录句柄的东西
+    DIR *dir = opendir(src_dir);
+    if ( dir == NULL )
+    {
+        printf("[ERROR] %s is not a directory or not exist!", src_dir);
+        return result;
+    }
+
+    // dirent会存储文件的各种属性
+    struct dirent* d_ent = NULL;
+
+    // linux每个目录下面都有一个"."和".."要把这两个都去掉
+    char dot[3] = ".";
+    char dotdot[6] = "..";
+
+    // 一行一行的读目录下的东西,这个东西的属性放到dirent的变量中
+    while ( (d_ent = readdir(dir)) != NULL )
+    {
+        // 忽略 "." 和 ".."
+        if ( (strcmp(d_ent->d_name, dot) != 0) && (strcmp(d_ent->d_name, dotdot) != 0) )
+        {
+            // d_type可以看到当前的东西的类型,DT_DIR代表当前都到的是目录,在usr/include/dirent.h中定义的
+            if ( d_ent->d_type != DT_DIR)
+            {
+                string d_name(d_ent->d_name);
+                //printf("%s\n",d_ent->d_name);
+                if (strcmp(d_name.c_str () + d_name.length () - m_ext.length(), m_ext.c_str ()) == 0 ||
+                    strcmp(d_name.c_str () + d_name.length () - m_ext2.length(), m_ext2.c_str ()) == 0)
+                {
+                    // 构建绝对路径
+                    string absolutePath = directory + string("/") + string(d_ent->d_name);
+//                     如果传入的目录最后是/--> 例如"a/b/", 那么后面直接链接文件名
+                    if (directory[directory.length()-1] == '/')
+                        absolutePath = directory + string(d_ent->d_name);
+                    result.push_back(absolutePath);
+//                    result.push_back(string(d_ent->d_name));
+                }
+            }
+        }
+    }
+
+    // sort the returned files
+//    sort(result.begin(), result.end());
+
+    closedir(dir);
+    return result;
+}
+#endif
 
 vector<X509Certificate> X509Certificate_p::systemCaCertificates()
 {
@@ -798,6 +870,35 @@ vector<X509Certificate> X509Certificate_p::systemCaCertificates()
             systemCerts.push_back(cert);
         }
         CertCloseStore(hSystemStore, 0);
+    }
+#else
+    set<string> certFiles;
+    vector<string> directories = {"/etc/ssl/certs/", // (K)ubuntu, OpenSUSE, Mandriva ...
+                                  "/usr/lib/ssl/certs/", // Gentoo, Mandrake
+                                  "/usr/share/ssl/", // Centos, Redhat, SuSE
+                                  "/usr/local/ssl/", // Normal OpenSSL Tarball
+                                  "/var/ssl/certs/", // AIX
+                                  "/usr/local/ssl/certs/", // Solaris
+                                  "/etc/openssl/certs/", // BlackBerry
+                                  "/opt/openssl/certs/", // HP-UX
+                                  "/etc/ssl/" // OpenBSD
+    };
+
+    for (size_t a = 0; a < directories.size(); a++) {
+        auto certFileVec = GetFiles(directories.at(a).c_str(), ".pem", ".crt");
+
+//        int index = 0;
+        for(auto fileName : certFileVec) {
+//            cout << index++ << ": " << fileName << endl;
+            certFiles.insert(fileName);
+        }
+    }
+
+//    int num = 0;
+    for(auto fileName : certFiles) {
+//        cout << num++ << ". " << "filename:" << fileName << endl;
+        X509Certificate cert(fileName.c_str(), 0);
+        systemCerts.push_back(cert);
     }
 #endif
     return systemCerts;
